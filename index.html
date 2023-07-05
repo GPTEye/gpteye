@@ -14,11 +14,17 @@
 
   <div>
     <p id="chatlog"></p>
-    <textarea id="chatbox" rows="10" cols="60"></textarea>
+    <textarea id="chatbox" rows="10" cols="80"></textarea>
     <button onclick="send_chatbox();">Send</button>
   </div>
 
   <script>
+    // Initialize variables
+    var processing_image_msg = "<i>Processing image...</i>";
+    var processing_chat_msg = "<i>Processing chat...</i>";
+    var chatlog = document.getElementById("chatlog");
+    window.msg = "";
+
     // JSON storing chat history
     var chatpl = {
       "messages": [{
@@ -46,9 +52,12 @@
     function chat(msg, log) {
       if (log) {
         // Show message on chatlog
-        document.getElementById("chatlog").innerHTML += "<b>User:</b> " + msg + "<br>";
+        chatlog.innerHTML += "<b>User:</b> " + msg + "<br>";
         msg = "The user said: `" + msg + "`. Remember you are talking with the user, so use pronoun words properly.";
       }
+
+      // Show processing status
+      chatlog.innerHTML += processing_chat_msg;
 
       // Add message to chat payload
       chatpl["messages"].push({"role": "user", "content": msg});
@@ -66,7 +75,7 @@
         .then(data => {
           // Add response to chat payload
           chatpl["messages"].push(data["choices"][0]["message"]);
-          document.getElementById("chatlog").innerHTML += "<b>Bot:</b> " + data["choices"][0]["message"]["content"] + "<br>";
+          chatlog.innerHTML = chatlog.innerHTML.replace(processing_chat_msg, "<b>Bot:</b> " + data["choices"][0]["message"]["content"] + "<br>");
         })
         .catch(error => {
           // Handle error
@@ -81,26 +90,92 @@
       chat(msg, true);
     }
 
-    // Capture a frame from the video stream and encode it
-    function captureFrame() {
-      var videoElement = document.getElementById('video');
-      var canvasElement = document.getElementById('canvas');
-      var context = canvasElement.getContext('2d');
+    function process_ocr(img) {
+      return new Promise((resolve, reject) => {
+        // Create OCR payload
+        var ocr_payload = {
+          data: [img, ["en"]],
+          session_hash: "gyf0n8g7cek",
+          action: "predict"
+        };
 
-      // Set canvas dimensions to match video element
-      canvasElement.width = videoElement.videoWidth;
-      canvasElement.height = videoElement.videoHeight;
+        // Send OCR request
+        fetch("https://tomofi-easyocr.hf.space/api/queue/push/", {
+          "headers": {
+            "accept": "*/*",
+            "content-type": "application/json",
+          },
+          "referrer": "https://tomofi-easyocr.hf.space/",
+          "body": JSON.stringify(ocr_payload),
+          "method": "POST",
+        })
+        .then(response => response.json()) // Parse response as JSON
+        .then(data => {
+          // Get the hash, then check for the result
+          var hash = data["hash"];
+          checkStatus(hash)
+            .then(result => resolve(result))
+            .catch(error => reject(error));
+        })
+        .catch(error => {
+          // Handle error
+          console.error('Error:', error);
+          reject(error);
+        });
 
-      // Draw the current frame from the video element onto the canvas
-      context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+        // Function to check the status continuously
+        function checkStatus(hash) {
+          return new Promise((resolve, reject) => {
+            // Create status payload
+            var status_payload = {
+              hash: hash
+            };
 
-      // Convert the canvas image to a data URL representation of a JPEG image
-      var dataUrl = canvasElement.toDataURL('image/jpeg');
+            // Send status request
+            fetch("https://tomofi-easyocr.hf.space/api/queue/status/", {
+              "headers": {
+                "accept": "*/*",
+                "content-type": "application/json",
+              },
+              "referrer": "https://tomofi-easyocr.hf.space/",
+              "body": JSON.stringify(status_payload),
+              "method": "POST",
+            })
+            .then(response => response.json()) // Parse response as JSON
+            .then(statusData => {
+              // Check the status field
+              var status = statusData["status"];
+              if (status === "COMPLETE") {
+                // Process is complete, return the result
+                resolve(statusData["data"]["data"][1]["data"]);
+              } else if (status === "QUEUED" || status === "PENDING") {
+                // Process is still ongoing, check status again after a delay
+                setTimeout(function() {
+                  checkStatus(hash)
+                    .then(result => resolve(result))
+                    .catch(error => reject(error));
+                }, 1000); // Adjust the delay time as needed
+              } else {
+                // Handle unknown status
+                console.error('Unknown status:', status);
+                reject('Unknown status: ' + status);
+              }
+            })
+            .catch(error => {
+              // Handle error
+              console.error('Error:', error);
+              reject(error);
+            });
+          });
+        }
+      });
+    }
 
+    function process_cap(img) {
       // Create payload
       var payload = {
         fn_index: 0,
-        data: [dataUrl],
+        data: [img],
         session_hash: 'cmytyp1g88u'
       };
 
@@ -120,15 +195,17 @@
         } else if (message.msg === 'process_completed') {
           // Assume it's the result message
           var result = JSON.parse(event.data);
-          var msg = "Auto generated captions (by bots, not what the user describe) of image from the user's camera: ";
+          window.msg += "Auto generated captions (by bots, not what the user describe) of image from the user's camera: ";
           for (var i = 0; i <= 4; i++) {
             //document.getElementById("cap" + i.toString()).innerText = result["output"]["data"][i];
-            msg += "`" + result["output"]["data"][i] + (i == 4 ? "`" : "`, ");
+            window.msg += "`" + result["output"]["data"][i] + (i == 4 ? "`" : "`, ");
           }
 
-          msg += "\nThese are multiple descriptions of the same scene, try to think it as the same scene but many ways to describe. Pretent that you actually \"see\" the scene, not just looking it through images and descriptions. Describe what you can \"see\" in the user's scene through the description. Try to guess what the user's doing or where the user is. Ask questions you want to clarify about the scene, actions,... Remember you are talking to the user, so use pronoun words properly. If the description talk about only one person, that's likely to be the user. Images (but not descriptions) are continuous, so if there is another picture described, they are related to the last picture.";
+          window.msg += "\nThese are multiple descriptions of the same scene, try to think it as the same scene but many ways to describe. Pretent that you actually \"see\" the scene, not just looking it through images and descriptions. Describe what you can \"see\" in the user's scene through the description. Try to guess what the user's doing or where the user is. Ask questions you want to clarify about the scene, actions,... Remember you are talking to the user, so use pronoun words properly. If the description talk about only one person, that's likely to be the user. Images (but not descriptions) are continuous, so if there is another picture described, they are related to the last picture.";
 
-          chat(msg, false);
+          // Update processing status
+          chatlog.innerHTML = chatlog.innerHTML.replace(processing_image_msg, "");
+          chat(window.msg, false);
         }
       };
 
@@ -141,6 +218,46 @@
       socket.onclose = function() {
         console.log('WebSocket connection closed');
       };
+    }
+
+    // Get a frame, process it, and send result to ChatGPT
+    function captureFrame() {
+      var videoElement = document.getElementById('video');
+      var canvasElement = document.getElementById('canvas');
+      var context = canvasElement.getContext('2d');
+      
+      // Show processing status
+      chatlog.innerHTML += processing_image_msg;
+
+      // Set canvas dimensions to match video element
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+
+      // Draw the current frame from the video element onto the canvas
+      context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+      // Convert the canvas image to a data URL representation of a JPEG image
+      var dataUrl = canvasElement.toDataURL('image/jpeg');
+
+      // Process OCR
+      process_ocr(dataUrl)
+        .then(result => {
+          // Handle the OCR result
+          if (result.length > 0) {
+            // Detected text in the image
+            window.msg += "Text detected in the image (might contain incorrect result): ";
+            for (var i = 0; i < result.length; i++) {
+              window.msg += "`" + result[i][0] + (i == (result.length - 1) ? "`. " : "`, ");
+            }
+          }
+
+          // Get caption
+          process_cap(dataUrl);
+        })
+        .catch(error => {
+          // Handle the error
+          console.error(error);
+        });
     }
   </script>
 </body>
