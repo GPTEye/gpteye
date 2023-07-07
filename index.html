@@ -18,6 +18,16 @@
     <button onclick="send_chatbox();">Send</button>
   </div>
 
+  <br>
+  <div>
+    <button onclick="toggle_setting();">Settings</button>
+    <div id="setting" style="display: none;">
+      <label>
+        <input type="checkbox" id="ocr_enable" checked>Enable OCR?
+      </label>
+    </div>
+  </div>
+
   <script>
     // Initialize variables
     var processing_image_msg = "<i>Processing image...</i>";
@@ -91,84 +101,90 @@
     }
 
     function process_ocr(img) {
-      return new Promise((resolve, reject) => {
-        // Create OCR payload
-        var ocr_payload = {
-          data: [img, ["en"]],
-          session_hash: "gyf0n8g7cek",
-          action: "predict"
-        };
+      if (document.getElementById("ocr_enable").checked) {
+        // Enable OCR
+        return new Promise((resolve, reject) => {
+          // Create OCR payload
+          var ocr_payload = {
+            data: [img, ["en"]],
+            session_hash: "gyf0n8g7cek",
+            action: "predict"
+          };
 
-        // Send OCR request
-        fetch("https://tomofi-easyocr.hf.space/api/queue/push/", {
-          "headers": {
-            "accept": "*/*",
-            "content-type": "application/json",
-          },
-          "referrer": "https://tomofi-easyocr.hf.space/",
-          "body": JSON.stringify(ocr_payload),
-          "method": "POST",
-        })
-        .then(response => response.json()) // Parse response as JSON
-        .then(data => {
-          // Get the hash, then check for the result
-          var hash = data["hash"];
-          checkStatus(hash)
-            .then(result => resolve(result))
-            .catch(error => reject(error));
-        })
-        .catch(error => {
-          // Handle error
-          console.error('Error:', error);
-          reject(error);
-        });
-
-        // Function to check the status continuously
-        function checkStatus(hash) {
-          return new Promise((resolve, reject) => {
-            // Create status payload
-            var status_payload = {
-              hash: hash
-            };
-
-            // Send status request
-            fetch("https://tomofi-easyocr.hf.space/api/queue/status/", {
-              "headers": {
-                "accept": "*/*",
-                "content-type": "application/json",
-              },
-              "referrer": "https://tomofi-easyocr.hf.space/",
-              "body": JSON.stringify(status_payload),
-              "method": "POST",
-            })
-            .then(response => response.json()) // Parse response as JSON
-            .then(statusData => {
-              // Check the status field
-              var status = statusData["status"];
-              if (status === "COMPLETE") {
-                // Process is complete, return the result
-                resolve(statusData["data"]["data"][1]["data"]);
-              } else if (status === "QUEUED" || status === "PENDING") {
-                // Process is still ongoing, check status again after a delay
-                setTimeout(function() {
-                  checkStatus(hash)
-                    .then(result => resolve(result))
-                    .catch(error => reject(error));
-                }, 1000); // Adjust the delay time as needed
-              } else {
-                // Handle unknown status
-                console.error('Unknown status:', status);
-                reject('Unknown status: ' + status);
-              }
-            })
-            .catch(error => {
-              // Handle error
-              console.error('Error:', error);
-              reject(error);
-            });
+          // Send OCR request
+          fetch("https://tomofi-easyocr.hf.space/api/queue/push/", {
+            "headers": {
+              "accept": "*/*",
+              "content-type": "application/json",
+            },
+            "referrer": "https://tomofi-easyocr.hf.space/",
+            "body": JSON.stringify(ocr_payload),
+            "method": "POST",
+          })
+          .then(response => response.json()) // Parse response as JSON
+          .then(data => {
+            // Get the hash, then check for the result
+            var hash = data["hash"];
+            checkStatus(hash)
+              .then(result => resolve(result))
+              .catch(error => reject(error));
+          })
+          .catch(error => {
+            // Handle error
+            console.error('Error:', error);
+            reject(error);
           });
-        }
-      });
+
+          // Function to check the status continuously
+          function checkStatus(hash) {
+            return new Promise((resolve, reject) => {
+              // Create status payload
+              var status_payload = {
+                hash: hash
+              };
+
+              // Send status request
+              fetch("https://tomofi-easyocr.hf.space/api/queue/status/", {
+                "headers": {
+                  "accept": "*/*",
+                  "content-type": "application/json",
+                },
+                "referrer": "https://tomofi-easyocr.hf.space/",
+                "body": JSON.stringify(status_payload),
+                "method": "POST",
+              })
+              .then(response => response.json()) // Parse response as JSON
+              .then(statusData => {
+                // Check the status field
+                var status = statusData["status"];
+                if (status === "COMPLETE") {
+                  // Process is complete, return the result
+                  resolve(statusData["data"]["data"][1]["data"]);
+                } else if (status === "QUEUED" || status === "PENDING") {
+                  // Process is still ongoing, check status again after a delay
+                  setTimeout(function() {
+                    checkStatus(hash)
+                      .then(result => resolve(result))
+                      .catch(error => reject(error));
+                  }, 1000); // Adjust the delay time as needed
+                } else {
+                  // Handle unknown status
+                  console.error('Unknown status:', status);
+                  reject('Unknown status: ' + status);
+                }
+              })
+              .catch(error => {
+                // Handle error
+                console.error('Error:', error);
+                reject(error);
+              });
+            });
+          }
+        });
+      } else {
+        // Disable OCR. We just return empty result
+        return new Promise((resolve, reject) => {resolve([])});
+      }
     }
 
     function process_cap(img) {
@@ -176,11 +192,11 @@
       var payload = {
         fn_index: 0,
         data: [img],
-        session_hash: 'cmytyp1g88u'
+        session_hash: 'yzw9me3yt5'
       };
 
       // Establish a WebSocket connection
-      var socket = new WebSocket('wss://devnsketch-comparing-caption-models-rich.hf.space/queue/join');
+      var socket = new WebSocket('wss://nielsr-comparing-captioning-models.hf.space/queue/join');
 
       // Handle messages received from the server
       socket.onmessage = function(event) {
@@ -188,7 +204,7 @@
 
         if (message.msg === 'send_hash') {
           // Send the session hash
-          socket.send('{"session_hash":"cmytyp1g88u","fn_index":0}');
+          socket.send('{"session_hash":"yzw9me3yt5","fn_index":0}');
         } else if (message.msg === 'send_data') {
           // Send the payload
           socket.send(JSON.stringify(payload));
@@ -258,6 +274,16 @@
           // Handle the error
           console.error(error);
         });
+    }
+
+    // Show / hide setting
+    function toggle_setting() {
+      var setting = document.getElementById('setting');
+      if (setting.style.display === 'none') {
+        setting.style.display = 'block';
+      } else {
+        setting.style.display = 'none';
+      }
     }
   </script>
 </body>
