@@ -4,8 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GPTEye</title>
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6208562759904864"
-     crossorigin="anonymous"></script>
 </head>
 <body>
   <div>
@@ -27,6 +25,11 @@
       <label>
         <input type="checkbox" id="ocr_enable" checked>Enable OCR?
       </label>
+      <p>Select captioning endpoint:</p>
+      <select id="cap_ep">
+        <option>Coca clone by fffiloni</option>
+        <option>Comparing captioning models by nielsr</option>
+      </select>
     </div>
   </div>
 
@@ -75,24 +78,34 @@
       chatpl["messages"].push({"role": "user", "content": msg});
 
       // Send POST request with JSON payload
-      fetch("https://free.churchless.tech/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer MyDiscord',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(chatpl)
-      })
-        .then(response => response.json()) // Parse response as JSON
-        .then(data => {
-          // Add response to chat payload
-          chatpl["messages"].push(data["choices"][0]["message"]);
-          chatlog.innerHTML = chatlog.innerHTML.replace(processing_chat_msg, "<b>Bot:</b> " + data["choices"][0]["message"]["content"] + "<br>");
+      function sendRequest() {
+        fetch("https://free.churchless.tech/v1/chat/completions", {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer MyDiscord',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(chatpl)
         })
-        .catch(error => {
-          // Handle error
-          console.error('Error:', error);
-        });
+          .then(response => {
+            if (response.ok) {
+              return response.json();
+            } else{
+              sendRequest();
+            }
+          })
+          .then(data => {
+            // Add response to chat payload
+            chatpl["messages"].push(data["choices"][0]["message"]);
+            chatlog.innerHTML = chatlog.innerHTML.replace(processing_chat_msg, "<b>Bot:</b> " + data["choices"][0]["message"]["content"] + "<br>");
+          })
+          .catch(error => {
+            // Handle error
+            console.error('Error:', error);
+          });
+      }
+
+      sendRequest();
     }
 
     // Submit the message in chatbox
@@ -190,15 +203,18 @@
     }
 
     function process_cap(img) {
+      // Select endpoint
+      var ep = document.getElementById("cap_ep");
+
       // Create payload
       var payload = {
         fn_index: 0,
-        data: [img],
+        data: (ep == 1) ? [img] : [img, "Beam search", 1, 0.5, 5, 20],
         session_hash: 'yzw9me3yt5'
       };
 
       // Establish a WebSocket connection
-      var socket = new WebSocket('wss://nielsr-comparing-captioning-models.hf.space/queue/join');
+      var socket = new WebSocket((ep == 1) ? 'wss://nielsr-comparing-captioning-models.hf.space/queue/join' : 'wss://fffiloni-coca-clone.hf.space/queue/join');
 
       // Handle messages received from the server
       socket.onmessage = function(event) {
@@ -214,9 +230,14 @@
           // Assume it's the result message
           var result = JSON.parse(event.data);
           window.msg += "Auto generated captions (by bots, not what the user describe) of image from the user's camera: ";
-          for (var i = 0; i <= 4; i++) {
-            //document.getElementById("cap" + i.toString()).innerText = result["output"]["data"][i];
-            window.msg += "`" + result["output"]["data"][i] + (i == 4 ? "`" : "`, ");
+
+          if (ep == 1) {
+            for (var i = 0; i <= 4; i++) {
+              //document.getElementById("cap" + i.toString()).innerText = result["output"]["data"][i];
+              window.msg += "`" + result["output"]["data"][i] + (i == 4 ? "`" : "`, ");
+            }
+          } else {
+            window.msg += "`" + result["output"]["data"][0] + "`";
           }
 
           window.msg += "\nThese are multiple descriptions of the same scene, try to think it as the same scene but many ways to describe. Pretent that you actually \"see\" the scene, not just looking it through images and descriptions. Describe what you can \"see\" in the user's scene through the description. Try to guess what the user's doing or where the user is. Ask questions you want to clarify about the scene, actions,... Remember you are talking to the user, so use pronoun words properly. If the description talk about only one person, that's likely to be the user. Images (but not descriptions) are continuous, so if there is another picture described, they are related to the last picture.";
