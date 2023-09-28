@@ -27,8 +27,8 @@
       </label>
       <p>Select captioning endpoint:</p>
       <select id="cap_ep">
-        <option>Coca clone by fffiloni</option>
         <option>Comparing captioning models by nielsr</option>
+        <option>Coca clone by fffiloni</option>
       </select>
     </div>
   </div>
@@ -79,10 +79,10 @@
 
       // Send POST request with JSON payload
       function sendRequest() {
-        fetch("https://free.churchless.tech/v1/chat/completions", {
+        fetch("https://ai.fakeopen.com/v1/chat/completions", {
           method: 'POST',
           headers: {
-            'Authorization': 'Bearer MyDiscord',
+            'Authorization': 'Bearer pk-this-is-a-real-free-pool-token-for-everyone',
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(chatpl)
@@ -209,12 +209,12 @@
       // Create payload
       var payload = {
         fn_index: 0,
-        data: (ep == 1) ? [img] : [img, "Beam search", 1, 0.5, 5, 20],
+        data: (ep == 0) ? [img] : [img, "Beam search", 1, 0.5, 5, 20],
         session_hash: 'yzw9me3yt5'
       };
 
       // Establish a WebSocket connection
-      var socket = new WebSocket((ep == 1) ? 'wss://nielsr-comparing-captioning-models.hf.space/queue/join' : 'wss://fffiloni-coca-clone.hf.space/queue/join');
+      var socket = new WebSocket((ep == 0) ? 'wss://nielsr-comparing-captioning-models.hf.space/queue/join' : 'wss://fffiloni-coca-clone.hf.space/queue/join');
 
       // Handle messages received from the server
       socket.onmessage = function(event) {
@@ -231,7 +231,7 @@
           var result = JSON.parse(event.data);
           window.msg += "Auto generated captions (by bots, not what the user describe) of image from the user's camera: ";
 
-          if (ep == 1) {
+          if (ep == 0) {
             for (var i = 0; i <= 4; i++) {
               //document.getElementById("cap" + i.toString()).innerText = result["output"]["data"][i];
               window.msg += "`" + result["output"]["data"][i] + (i == 4 ? "`" : "`, ");
